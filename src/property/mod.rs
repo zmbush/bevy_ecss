@@ -7,14 +7,17 @@ use bevy::{
         AssetId, AssetServer, Assets, Color, Commands, Deref, DerefMut, Entity, Local, Query, Res,
         Resource,
     },
-    ui::{UiRect, Val},
+    ui::{
+        GridPlacement, GridTrack, GridTrackRepetition, MaxTrackSizingFunction,
+        MinTrackSizingFunction, RepeatedGridTrack, UiRect, Val,
+    },
     utils::HashMap,
 };
 
 use cssparser::Token;
 use smallvec::SmallVec;
 
-use crate::{selector::Selector, EcssError, SelectorElement, StyleSheetAsset};
+use crate::{parser::ParsedToken, selector::Selector, EcssError, SelectorElement, StyleSheetAsset};
 
 mod colors;
 pub mod impls;
@@ -37,6 +40,8 @@ pub enum PropertyToken {
     Vh(f32),
     /// A viewport width value like `10vw`
     Vw(f32),
+    /// A Fraction of a grid like `1fr`
+    Fr(f32),
     /// A numeric float value, like `31.1` or `43`.
     Number(f32),
     /// A plain identifier, like `none` or `center`.
@@ -45,6 +50,10 @@ pub enum PropertyToken {
     Hash(String),
     /// A quoted string, like `"some value"`.
     String(String),
+    /// A Function name
+    Function(String, Vec<PropertyToken>),
+    /// A Literal `/`
+    Slash,
 }
 
 /// A list of [`PropertyToken`] which was parsed from a single property.
@@ -113,6 +122,119 @@ impl PropertyValues {
             PropertyToken::Identifier(val) if val == "auto" => Some(Val::Auto),
             _ => None,
         })
+    }
+
+    pub fn grid_template(&self) -> Option<Vec<RepeatedGridTrack>> {
+        Some(
+            self.0
+                .iter()
+                .filter_map(|token| match token {
+                    PropertyToken::Percentage(val) => Some(GridTrack::percent(*val)),
+                    PropertyToken::Dimension(val) => Some(GridTrack::px(*val)),
+                    PropertyToken::Fr(val) => Some(GridTrack::fr(*val)),
+                    PropertyToken::Identifier(val) if val == "auto" => Some(GridTrack::auto()),
+                    PropertyToken::Function(fun, args) if fun == "repeat" => {
+                        if args.len() != 2 {
+                            error!("Expected 2 arguments to repeat");
+                            return None;
+                        }
+                        let repeat = GridTrackRepetition::try_from(&args[0]).ok()?;
+
+                        match &args[1] {
+                            PropertyToken::Percentage(val) => {
+                                Some(RepeatedGridTrack::percent(repeat, *val))
+                            }
+                            PropertyToken::Dimension(val) => {
+                                Some(RepeatedGridTrack::px(repeat, *val))
+                            }
+                            PropertyToken::Fr(val) => {
+                                if let GridTrackRepetition::Count(repeat) = repeat {
+                                    Some(RepeatedGridTrack::fr(repeat, *val))
+                                } else {
+                                    error!(
+                                "fr based repeats must have a count, not auto-fit, or auto-fill"
+                            );
+                                    None
+                                }
+                            }
+                            PropertyToken::Identifier(val) if val == "auto" => {
+                                if let GridTrackRepetition::Count(repeat) = repeat {
+                                    Some(RepeatedGridTrack::auto(repeat))
+                                } else {
+                                    error!(
+                                "auto based repeats must have a count, not auto-fit, or auto-fill"
+                            );
+                                    None
+                                }
+                            }
+                            _ => {
+                                error!("Could not determine second argument to repeat");
+                                None
+                            }
+                        }
+                    }
+                    PropertyToken::Function(fun, args) if fun == "fit-content" => {
+                        if args.len() != 1 {
+                            error!("Expected 1 arguments to fit-content");
+                            return None;
+                        }
+                        match &args[0] {
+                            PropertyToken::Dimension(val) => Some(GridTrack::fit_content_px(*val)),
+                            PropertyToken::Percentage(val) => {
+                                Some(GridTrack::fit_content_percent(*val))
+                            }
+                            _ => {
+                                error!("fit-content only accepts px or percent");
+                                None
+                            }
+                        }
+                    }
+                    PropertyToken::Function(fun, args) if fun == "minmax" => {
+                        if args.len() != 2 {
+                            error!("Expected 2 arguments to minmax");
+                            return None;
+                        }
+                        Some(GridTrack::minmax(
+                            MinTrackSizingFunction::try_from(&args[0]).ok()?,
+                            MaxTrackSizingFunction::try_from(&args[1]).ok()?,
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect(),
+        )
+    }
+
+    pub fn grid_placement(&self) -> Option<GridPlacement> {
+        use PropertyToken::*;
+        match &self.0[..] {
+            [Number(start)] => Some(GridPlacement::start(*start as i16)),
+            [Number(start), Slash, Number(end)] => {
+                Some(GridPlacement::start_end(*start as i16, *end as i16))
+            }
+
+            [Identifier(start), Slash, Number(end)] if start == "auto" => {
+                Some(GridPlacement::end(*end as i16))
+            }
+            [Number(start), Slash, Identifier(end)] if end == "auto" => {
+                Some(GridPlacement::start(*start as i16))
+            }
+            [Identifier(start)] if start == "auto" => Some(GridPlacement::auto()),
+            [Identifier(start), Slash, Identifier(end)] if start == "auto" && end == "auto" => {
+                Some(GridPlacement::auto())
+            }
+
+            [Identifier(id), Number(span)] if id == "span" => {
+                Some(GridPlacement::span(*span as u16))
+            }
+            [Identifier(id), Number(span), Slash, Number(end)] if id == "span" => {
+                Some(GridPlacement::end_span(*end as i16, *span as u16))
+            }
+            [Number(start), Slash, Identifier(id), Number(span)] if id == "span" => {
+                Some(GridPlacement::start_span(*start as i16, *span as u16))
+            }
+            _ => None,
+        }
     }
 
     /// Tries to parses the current values as a single [`f32`].
@@ -189,6 +311,86 @@ impl PropertyValues {
     }
 }
 
+impl TryFrom<&PropertyToken> for GridTrackRepetition {
+    type Error = ();
+
+    fn try_from(value: &PropertyToken) -> Result<Self, Self::Error> {
+        Ok(match value {
+            PropertyToken::Number(value) => GridTrackRepetition::Count(*value as u16),
+            PropertyToken::Identifier(val) if val == "auto-fill" => GridTrackRepetition::AutoFill,
+            PropertyToken::Identifier(val) if val == "auto-fit" => GridTrackRepetition::AutoFit,
+            _ => {
+                error!("first argument to repeat must be a u16, auto-fill, or auto-fit");
+                return Err(());
+            }
+        })
+    }
+}
+
+impl TryFrom<&PropertyToken> for MinTrackSizingFunction {
+    type Error = ();
+    fn try_from(value: &PropertyToken) -> Result<Self, Self::Error> {
+        Ok(match value {
+            PropertyToken::Number(value) => MinTrackSizingFunction::Px(*value),
+            PropertyToken::Percentage(value) => MinTrackSizingFunction::Percent(*value),
+            PropertyToken::VMin(value) => MinTrackSizingFunction::VMin(*value),
+            PropertyToken::VMax(value) => MinTrackSizingFunction::VMax(*value),
+            PropertyToken::Vh(value) => MinTrackSizingFunction::Vh(*value),
+            PropertyToken::Vw(value) => MinTrackSizingFunction::Vw(*value),
+            PropertyToken::Identifier(val) if val == "min-content" => {
+                MinTrackSizingFunction::MinContent
+            }
+            PropertyToken::Identifier(val) if val == "max-content" => {
+                MinTrackSizingFunction::MaxContent
+            }
+            PropertyToken::Identifier(val) if val == "auto" => MinTrackSizingFunction::Auto,
+            _ => {
+                error!("first argument to minmax must be a px, percentage, vmin, vmax, vh, vw, min-content, max-content, or auto");
+                return Err(());
+            }
+        })
+    }
+}
+
+impl TryFrom<&PropertyToken> for MaxTrackSizingFunction {
+    type Error = ();
+    fn try_from(value: &PropertyToken) -> Result<Self, Self::Error> {
+        Ok(match value {
+            PropertyToken::Number(value) => MaxTrackSizingFunction::Px(*value),
+            PropertyToken::Percentage(value) => MaxTrackSizingFunction::Percent(*value),
+            PropertyToken::VMin(value) => MaxTrackSizingFunction::VMin(*value),
+            PropertyToken::VMax(value) => MaxTrackSizingFunction::VMax(*value),
+            PropertyToken::Vh(value) => MaxTrackSizingFunction::Vh(*value),
+            PropertyToken::Vw(value) => MaxTrackSizingFunction::Vw(*value),
+            PropertyToken::Identifier(val) if val == "min-content" => {
+                MaxTrackSizingFunction::MinContent
+            }
+            PropertyToken::Identifier(val) if val == "max-content" => {
+                MaxTrackSizingFunction::MaxContent
+            }
+            PropertyToken::Identifier(val) if val == "auto" => MaxTrackSizingFunction::Auto,
+            _ => {
+                error!("second argument to minmax must be a px, percentage, vmin, vmax, vh, vw, min-content, max-content, or auto");
+                return Err(());
+            }
+        })
+    }
+}
+
+impl<'i> TryFrom<ParsedToken<'i>> for PropertyToken {
+    type Error = ();
+
+    fn try_from(value: ParsedToken<'i>) -> Result<Self, Self::Error> {
+        match value {
+            ParsedToken::Single(tok) => tok.try_into(),
+            ParsedToken::Function(name, args) => Ok(PropertyToken::Function(
+                name.to_string(),
+                args.into_iter().filter_map(|t| t.try_into().ok()).collect(),
+            )),
+        }
+    }
+}
+
 impl<'i> TryFrom<Token<'i>> for PropertyToken {
     type Error = ();
 
@@ -205,9 +407,15 @@ impl<'i> TryFrom<Token<'i>> for PropertyToken {
                 b"vmax" => Ok(Self::VMax(value)),
                 b"vh" => Ok(Self::Vh(value)),
                 b"vw" => Ok(Self::Vw(value)),
+                b"fr" => Ok(Self::Fr(value)),
                 _ => Ok(Self::Dimension(value)),
             },
-            _ => Err(()),
+            Token::Delim('/') => Ok(Self::Slash),
+            Token::WhiteSpace(_) => Err(()),
+            tt => {
+                error!("unmatched TT: {tt:?}");
+                Err(())
+            }
         }
     }
 }

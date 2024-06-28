@@ -90,7 +90,7 @@ mod style {
                     _asset_server: &AssetServer,
                     _commands: &mut Commands,
                 ) {
-                    components.$style_prop$(.$style_field)? = *cache;
+                    components.$style_prop$(.$style_field)? = cache.clone();
                 }
             }
         };
@@ -118,6 +118,29 @@ mod style {
 
     impl_style_single_value!("row-gap", RowGapProperty, Val, val, row_gap);
     impl_style_single_value!("column-gap", ColumnGapProperty, Val, val, column_gap);
+
+    impl_style_single_value!(
+        "grid-template-columns",
+        GridTemplateColumns,
+        Vec<RepeatedGridTrack>,
+        grid_template,
+        grid_template_columns
+    );
+    impl_style_single_value!(
+        "grid-template-rows",
+        GridTemplateRows,
+        Vec<RepeatedGridTrack>,
+        grid_template,
+        grid_template_rows
+    );
+    impl_style_single_value!("grid-row", GridRow, GridPlacement, grid_placement, grid_row);
+    impl_style_single_value!(
+        "grid-column",
+        GridColumn,
+        GridPlacement,
+        grid_placement,
+        grid_column
+    );
 
     impl_style_single_value!(
         "aspect-ratio",
@@ -177,7 +200,8 @@ mod style {
 
     impl_style_enum!(Display, "display", DisplayProperty, display,
         "flex" => Flex,
-        "none" => None
+        "grid" => Grid,
+        "none" => None,
     );
 
     impl_style_enum!(PositionType, "position-type", PositionTypeProperty, position_type,

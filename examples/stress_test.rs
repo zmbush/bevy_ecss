@@ -10,7 +10,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(EcssPlugin::default())
+        .add_plugins(EcssPlugin)
         .add_systems(Startup, setup)
         .run();
 }

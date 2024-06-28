@@ -1,7 +1,7 @@
 use bevy::log::prelude::error;
 use cssparser::{
-    AtRuleParser, DeclarationParser, ParseError, Parser, ParserInput, QualifiedRuleParser,
-    RuleBodyItemParser, RuleBodyParser, ToCss, Token,
+    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, ToCss, Token,
 };
 use smallvec::{smallvec, SmallVec};
 
@@ -185,6 +185,7 @@ impl<'i> DeclarationParser<'i> for PropertyParser {
     ) -> Result<Self::Declaration, ParseError<'i, EcssError>> {
         let mut tokens = smallvec![];
         for token in parse_values(parser)? {
+            bevy::log::info!("Trying to parse token: {token:?}");
             match token.try_into() {
                 Ok(t) => tokens.push(t),
                 Err(_) => continue,
@@ -207,13 +208,32 @@ impl<'i> QualifiedRuleParser<'i> for PropertyParser {
     type Error = EcssError;
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum ParsedToken<'i> {
+    Single(Token<'i>),
+    Function(CowRcStr<'i>, Vec<Token<'i>>),
+}
+
 fn parse_values<'i>(
     parser: &mut Parser<'i, '_>,
-) -> Result<SmallVec<[Token<'i>; 8]>, ParseError<'i, EcssError>> {
+) -> Result<SmallVec<[ParsedToken<'i>; 8]>, ParseError<'i, EcssError>> {
     let mut values = SmallVec::new();
 
-    while let Ok(token) = parser.next_including_whitespace() {
-        values.push(token.clone())
+    while let Ok(token) = parser.next() {
+        if let Token::Function(fn_name) = token {
+            values.push(ParsedToken::Function(
+                fn_name.clone(),
+                parser.parse_nested_block(|parser| {
+                    let mut values = Vec::new();
+                    while let Ok(token) = parser.next() {
+                        values.push(token.clone());
+                    }
+                    Ok(values)
+                })?,
+            ));
+        } else {
+            values.push(ParsedToken::Single(token.clone()));
+        }
     }
 
     Ok(values)
@@ -496,8 +516,8 @@ mod tests {
             r#"a {
             b: c;
             d: 0px;
-            e: #f; 
-            g: h i j; 
+            e: #f;
+            g: h i j;
             k-k: 100%;
             l: 15.3px 3%;
             m: 12.9;

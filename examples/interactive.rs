@@ -11,7 +11,7 @@ fn main() {
         }),
         ..default()
     }))
-    .add_plugins(EcssPlugin::with_hot_reload())
+    .add_plugins(EcssPlugin)
     .add_systems(Startup, setup);
 
     app.run();

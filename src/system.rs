@@ -101,7 +101,9 @@ pub(crate) fn prepare_state(
     let mut state = StyleSheetState::default();
 
     for (root, maybe_children, sheet_handle) in &css_query.nodes {
+        bevy::log::info!("STYLE SHEET: {sheet_handle:?}");
         for id in sheet_handle.handles().iter().map(|h| h.id()) {
+            bevy::log::info!("Checking sheet id: {id:?}");
             if let Some(sheet) = css_query.assets.get(id) {
                 let mut tracked_entities = TrackedEntities::default();
                 let mut selected_entities = SelectedEntities::default();
@@ -118,7 +120,7 @@ pub(crate) fn prepare_state(
                         &mut tracked_entities,
                     );
 
-                    trace!(
+                    bevy::log::info!(
                         "Applying rule ({}) on {} entities",
                         rule.selector.to_string(),
                         entities.len()
@@ -368,19 +370,24 @@ fn get_children_recursively(
 }
 
 /// Auto reapply style sheets when hot reloading is enabled
-pub(crate) fn hot_reload_style_sheets(
+pub(crate) fn reload_style_sheets(
     mut assets_events: EventReader<AssetEvent<StyleSheetAsset>>,
     mut q_sheets: Query<&mut StyleSheet>,
 ) {
     for evt in assets_events.read() {
-        if let AssetEvent::Modified { id } = evt {
-            q_sheets
-                .iter_mut()
-                .filter(|sheet| sheet.handles().iter().any(|h| h.id() == *id))
-                .for_each(|mut sheet| {
-                    debug!("Refreshing sheet {:?} due to asset reload", sheet);
-                    sheet.refresh();
-                });
+        match evt {
+            AssetEvent::Modified { id } | AssetEvent::LoadedWithDependencies { id } => {
+                q_sheets
+                    .iter_mut()
+                    .filter(|sheet| sheet.handles().iter().any(|h| h.id() == *id))
+                    .for_each(|mut sheet| {
+                        if evt.is_modified(*id) {
+                            debug!("Refreshing sheet {:?} due to asset reload", sheet);
+                        }
+                        sheet.refresh();
+                    });
+            }
+            _ => {}
         }
     }
 }

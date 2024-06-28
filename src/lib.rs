@@ -10,6 +10,7 @@ mod system;
 use std::{error::Error, fmt::Display};
 
 use bevy::{
+    app::First,
     asset::AssetEvents,
     ecs::system::SystemState,
     prelude::{
@@ -70,8 +71,6 @@ impl Display for EcssError {
         }
     }
 }
-#[derive(SystemSet, Debug, Clone, Hash, Eq, PartialEq)]
-struct EcssHotReload;
 
 /// System sets  used by `bevy_ecss` systems
 #[derive(SystemSet, Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -93,15 +92,7 @@ pub enum EcssSet {
 /// Plugin which add all types, assets, systems and internal resources needed by `bevy_ecss`.
 /// You must add this plugin in order to use `bevy_ecss`.
 #[derive(Default)]
-pub struct EcssPlugin {
-    hot_reload: bool,
-}
-
-impl EcssPlugin {
-    pub fn with_hot_reload() -> EcssPlugin {
-        EcssPlugin { hot_reload: true }
-    }
-}
+pub struct EcssPlugin;
 
 impl Plugin for EcssPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
@@ -123,18 +114,13 @@ impl Plugin for EcssPlugin {
             )
             .add_systems(PostUpdate, system::clear_state.in_set(EcssSet::Cleanup));
 
-        let prepared_state = PrepareParams::new(&mut app.world);
+        let prepared_state = PrepareParams::new(app.world_mut());
         app.insert_resource(prepared_state);
 
         register_component_selector(app);
         register_properties(app);
 
-        if self.hot_reload {
-            app.configure_sets(AssetEvents, EcssHotReload).add_systems(
-                AssetEvents,
-                system::hot_reload_style_sheets.in_set(EcssHotReload),
-            );
-        }
+        app.add_systems(First, system::reload_style_sheets.in_set(AssetEvents));
     }
 }
 
@@ -179,6 +165,11 @@ fn register_properties(app: &mut bevy::prelude::App) {
     app.register_property::<RowGapProperty>();
     app.register_property::<ColumnGapProperty>();
     app.register_property::<AspectRatioProperty>();
+
+    app.register_property::<GridColumn>();
+    app.register_property::<GridRow>();
+    app.register_property::<GridTemplateColumns>();
+    app.register_property::<GridTemplateRows>();
 
     app.register_property::<MarginProperty>();
     app.register_property::<PaddingProperty>();
@@ -232,10 +223,10 @@ impl RegisterComponentSelector for bevy::prelude::App {
     where
         T: Component,
     {
-        let system_state = SystemState::<Query<Entity, With<T>>>::new(&mut self.world);
+        let system_state = SystemState::<Query<Entity, With<T>>>::new(self.world_mut());
         let boxed_state = Box::new(system_state);
 
-        self.world
+        self.world_mut()
             .get_resource_or_insert_with::<ComponentFilterRegistry>(bevy::utils::default)
             .insert(name, boxed_state);
 

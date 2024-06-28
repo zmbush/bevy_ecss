@@ -1,39 +1,39 @@
 [package]
-name = "bevy_ecss"
-version = "0.7.0"
-edition = "2021"
 categories = ["game-development", "gui", "web-programming"]
 description = "Allows using a subset of CSS to interact with Bevy ECS"
-exclude = [".github/","book"]
-keywords = ["css", "bevy", "style", "theme", "ui"]
+edition = "2021"
+exclude = [".github/", "book"]
+keywords = ["bevy", "css", "style", "theme", "ui"]
 license = "MIT OR Apache-2.0"
+name = "bevy_ecss"
 readme = "README.md"
 repository = "https://github.com/afonsolage/bevy_ecss"
+version = "0.8.0-rc.1"
 
 [dependencies]
 
-bevy = { version = "0.13", default-features = false, features = [
-    "bevy_ui",
+bevy = { version = "0.14.0-rc.4", default-features = false, features = [
     "bevy_asset",
-    "bevy_text",
     "bevy_render",
+    "bevy_text",
+    "bevy_ui",
 ] }
 cssparser = "0.33"
 cssparser-color = "0.1"
-smallvec = { version = "1.11", features = ["serde", "union", "const_generics"] }
+smallvec = { version = "1.11", features = ["const_generics", "serde", "union"] }
 thiserror = "1.0.50"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-bevy = { version = "0.13", features = [
-    "bevy_ui",
+bevy = { version = "0.14.0-rc.4", features = [
     "bevy_asset",
-    "bevy_text",
     "bevy_render",
+    "bevy_text",
+    "bevy_ui",
     "file_watcher",
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-bevy = "0.13"
+bevy = "0.14.0-rc.4"
 
 [[example]]
 name = "simple_ui"
