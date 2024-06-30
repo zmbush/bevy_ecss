@@ -172,8 +172,22 @@ fn register_properties(app: &mut bevy::prelude::App) {
     app.register_property::<GridTemplateRows>();
 
     app.register_property::<MarginProperty>();
+    app.register_property::<MarginTopProperty>();
+    app.register_property::<MarginBottomProperty>();
+    app.register_property::<MarginLeftProperty>();
+    app.register_property::<MarginRightProperty>();
+
     app.register_property::<PaddingProperty>();
+    app.register_property::<PaddingTopProperty>();
+    app.register_property::<PaddingBottomProperty>();
+    app.register_property::<PaddingLeftProperty>();
+    app.register_property::<PaddingRightProperty>();
+
     app.register_property::<BorderProperty>();
+    app.register_property::<BorderTopProperty>();
+    app.register_property::<BorderBottomProperty>();
+    app.register_property::<BorderLeftProperty>();
+    app.register_property::<BorderRightProperty>();
 
     app.register_property::<FontColorProperty>();
     app.register_property::<FontProperty>();
@@ -242,6 +256,11 @@ pub trait RegisterProperty {
     fn register_property<T>(&mut self) -> &mut Self
     where
         T: Property + 'static;
+
+    fn register_property_after<T, After>(&mut self) -> &mut Self
+    where
+        T: Property + 'static,
+        After: Property + 'static;
 }
 
 impl RegisterProperty for bevy::prelude::App {
@@ -251,6 +270,20 @@ impl RegisterProperty for bevy::prelude::App {
     {
         self.add_systems(PreUpdate, T::apply_system.in_set(EcssSet::Apply));
 
+        self
+    }
+
+    fn register_property_after<T, After>(&mut self) -> &mut Self
+    where
+        T: Property + 'static,
+        After: Property + 'static,
+    {
+        self.add_systems(
+            PreUpdate,
+            T::apply_system
+                .after(After::apply_system)
+                .in_set(EcssSet::Apply),
+        );
         self
     }
 }

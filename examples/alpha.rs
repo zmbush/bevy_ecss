@@ -67,11 +67,13 @@ impl Property for AlphaProperty {
     }
 
     fn apply<'w>(
-        cache: &Self::Cache,
+        cache: Option<&Self::Cache>,
         mut components: QueryItem<Self::Components>,
         _asset_server: &AssetServer,
         _commands: &mut Commands,
     ) {
-        components.0.set_alpha(*cache);
+        if let Some(cache) = cache {
+            components.0.set_alpha(*cache);
+        }
     }
 }

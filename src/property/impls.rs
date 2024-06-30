@@ -10,54 +10,14 @@ pub use text::*;
 /// Impls for `bevy_ui` [`Style`] component
 mod style {
     use super::*;
-    /// Implements a new property for [`Style`] component which expects a rect value.
-    macro_rules! impl_style_rect {
-        ($name:expr, $struct:ident, $style_prop:ident$(.$style_field:ident)*) => {
-            #[doc = "Applies the `"]
-            #[doc = $name]
-            #[doc = "` property on [Style::"]
-            #[doc = stringify!($style_prop)]
-            $(#[doc = concat!("::",stringify!($style_field))])*
-            #[doc = "](`Style`) field of all sections on matched [`Style`] components."]
-            #[derive(Default)]
-            pub struct $struct;
-
-            impl Property for $struct {
-                type Cache = UiRect;
-                type Components = &'static mut Style;
-                type Filters = With<Node>;
-
-                fn name() -> &'static str {
-                    $name
-                }
-
-                fn parse<'a>(values: &PropertyValues) -> Result<Self::Cache, EcssError> {
-                    if let Some(val) = values.rect() {
-                        Ok(val)
-                    } else {
-                        Err(EcssError::InvalidPropertyValue(Self::name().to_string()))
-                    }
-                }
-
-                fn apply<'w>(
-                    cache: &Self::Cache,
-                    mut components: QueryItem<Self::Components>,
-                    _asset_server: &AssetServer,
-                    _commands: &mut Commands,
-                ) {
-                    components.$style_prop$(.$style_field)? = *cache;
-                }
-            }
-        };
-    }
-
-    impl_style_rect!("margin", MarginProperty, margin);
-    impl_style_rect!("padding", PaddingProperty, padding);
-    impl_style_rect!("border", BorderProperty, border);
 
     /// Implements a new property for [`Style`] component which expects a single value.
     macro_rules! impl_style_single_value {
         ($name:expr, $struct:ident, $cache:ty, $parse_func:ident, $style_prop:ident$(.$style_field:ident)*) => {
+            impl_style_single_value!($name, $struct, $cache, $parse_func, $style_prop$(.$style_field)*, true);
+        };
+
+        ($name:expr, $struct:ident, $cache:ty, $parse_func:ident, $style_prop:ident$(.$style_field:ident)*, $do_default:expr) => {
             #[doc = "Applies the `"]
             #[doc = $name]
             #[doc = "` property on [Style::"]
@@ -85,12 +45,20 @@ mod style {
                 }
 
                 fn apply<'w>(
-                    cache: &Self::Cache,
+                    cache: Option<&Self::Cache>,
                     mut components: QueryItem<Self::Components>,
                     _asset_server: &AssetServer,
                     _commands: &mut Commands,
                 ) {
-                    components.$style_prop$(.$style_field)? = cache.clone();
+                    if $do_default {
+                        components.$style_prop$(.$style_field)? = cache
+                            .cloned()
+                            .unwrap_or_default();
+                    } else {
+                        if let Some(cache) = cache {
+                            components.$style_prop$(.$style_field)? = cache.clone();
+                        }
+                    }
                 }
             }
         };
@@ -150,6 +118,73 @@ mod style {
         aspect_ratio
     );
 
+    /// Implements a new property for [`Style`] component which expects a rect value.
+    macro_rules! impl_style_rect {
+        ($name:expr, $struct:ident, {$struct_top:ident, $struct_bottom:ident, $struct_left:ident, $struct_right:ident}, $style_prop:ident$(.$style_field:ident)*) => {
+            #[doc = "Applies the `"]
+            #[doc = $name]
+            #[doc = "` property on [Style::"]
+            #[doc = stringify!($style_prop)]
+            $(#[doc = concat!("::",stringify!($style_field))])*
+            #[doc = "](`Style`) field of all sections on matched [`Style`] components."]
+            #[derive(Default)]
+            pub struct $struct;
+
+            impl Property for $struct {
+                type Cache = UiRect;
+                type Components = &'static mut Style;
+                type Filters = With<Node>;
+
+                fn name() -> &'static str {
+                    $name
+                }
+
+                fn parse<'a>(values: &PropertyValues) -> Result<Self::Cache, EcssError> {
+                    if let Some(val) = values.rect() {
+                        Ok(val)
+                    } else {
+                        Err(EcssError::InvalidPropertyValue(Self::name().to_string()))
+                    }
+                }
+
+                fn apply<'w>(
+                    cache: Option<&Self::Cache>,
+                    mut components: QueryItem<Self::Components>,
+                    _asset_server: &AssetServer,
+                    _commands: &mut Commands,
+                ) {
+                        components.$style_prop$(.$style_field)? = cache
+                            .copied()
+                            .unwrap_or_default();
+                }
+            }
+
+            impl_style_single_value!(concat!($name, "-top"), $struct_top, Val, val, $style_prop.top, false);
+            impl_style_single_value!(concat!($name, "-bottom"), $struct_bottom, Val, val, $style_prop.bottom, false);
+            impl_style_single_value!(concat!($name, "-left"), $struct_left, Val, val, $style_prop.left, false);
+            impl_style_single_value!(concat!($name, "-right"), $struct_right, Val, val, $style_prop.right, false);
+        };
+    }
+
+    impl_style_rect!("margin", MarginProperty, {
+        MarginTopProperty,
+        MarginBottomProperty,
+        MarginLeftProperty,
+        MarginRightProperty
+    }, margin);
+    impl_style_rect!("padding", PaddingProperty, {
+        PaddingTopProperty,
+        PaddingBottomProperty,
+        PaddingLeftProperty,
+        PaddingRightProperty
+    }, padding);
+    impl_style_rect!("border", BorderProperty, {
+        BorderTopProperty,
+        BorderBottomProperty,
+        BorderLeftProperty,
+        BorderRightProperty
+    }, border);
+
     /// Implements a new property for [`Style`] component which expects an enum.
     macro_rules! impl_style_enum {
         ($cache:ty, $name:expr, $struct:ident, $style_prop:ident$(.$style_field:ident)*, $($prop:expr => $variant:expr),+$(,)?) => {
@@ -187,12 +222,14 @@ mod style {
                 }
 
                 fn apply<'w>(
-                    cache: &Self::Cache,
+                    cache: Option<&Self::Cache>,
                     mut components: QueryItem<Self::Components>,
                     _asset_server: &AssetServer,
                     _commands: &mut Commands,
                 ) {
-                    components.$style_prop$(.$style_field)? = *cache;
+                    components.$style_prop$(.$style_field)? = cache
+                        .copied()
+                        .unwrap_or_default();
                 }
             }
         };
@@ -300,15 +337,16 @@ mod text {
         }
 
         fn apply<'w>(
-            cache: &Self::Cache,
+            cache: Option<&Self::Cache>,
             mut components: QueryItem<Self::Components>,
             _asset_server: &AssetServer,
             _commands: &mut Commands,
         ) {
+            let color = cache.copied().unwrap_or_default();
             components
                 .sections
                 .iter_mut()
-                .for_each(|section| section.style.color = *cache);
+                .for_each(|section| section.style.color = color);
         }
     }
 
@@ -334,15 +372,17 @@ mod text {
         }
 
         fn apply<'w>(
-            cache: &Self::Cache,
+            cache: Option<&Self::Cache>,
             mut components: QueryItem<Self::Components>,
             asset_server: &AssetServer,
             _commands: &mut Commands,
         ) {
-            components
-                .sections
-                .iter_mut()
-                .for_each(|section| section.style.font = asset_server.load(cache));
+            if let Some(cache) = cache {
+                components
+                    .sections
+                    .iter_mut()
+                    .for_each(|section| section.style.font = asset_server.load(cache));
+            }
         }
     }
 
@@ -368,15 +408,18 @@ mod text {
         }
 
         fn apply<'w>(
-            cache: &Self::Cache,
+            cache: Option<&Self::Cache>,
             mut components: QueryItem<Self::Components>,
             _asset_server: &AssetServer,
             _commands: &mut Commands,
         ) {
+            let size = cache
+                .copied()
+                .unwrap_or_else(|| TextStyle::default().font_size);
             components
                 .sections
                 .iter_mut()
-                .for_each(|section| section.style.font_size = *cache);
+                .for_each(|section| section.style.font_size = size);
         }
     }
 
@@ -407,12 +450,15 @@ mod text {
         }
 
         fn apply<'w>(
-            cache: &Self::Cache,
+            cache: Option<&Self::Cache>,
             mut components: QueryItem<Self::Components>,
             _asset_server: &AssetServer,
             _commands: &mut Commands,
         ) {
-            components.justify = cache.expect("Should always have a inner value");
+            components.justify = cache
+                .copied()
+                .unwrap_or(Some(JustifyText::Left))
+                .expect("Should always have a inner value");
         }
     }
 
@@ -438,16 +484,18 @@ mod text {
         }
 
         fn apply<'w>(
-            cache: &Self::Cache,
+            cache: Option<&Self::Cache>,
             mut components: QueryItem<Self::Components>,
             _asset_server: &AssetServer,
             _commands: &mut Commands,
         ) {
-            components
-                .sections
-                .iter_mut()
-                // TODO: Maybe change this so each line break is a new section
-                .for_each(|section| section.value.clone_from(cache));
+            if let Some(cache) = cache {
+                components
+                    .sections
+                    .iter_mut()
+                    // TODO: Maybe change this so each line break is a new section
+                    .for_each(|section| section.value.clone_from(cache));
+            }
         }
     }
 }
@@ -458,8 +506,11 @@ pub struct BackgroundColorProperty;
 
 impl Property for BackgroundColorProperty {
     type Cache = Color;
-    type Components = Entity;
-    type Filters = With<BackgroundColor>;
+    type Components = (
+        Option<&'static mut BackgroundColor>,
+        Option<&'static mut UiImage>,
+    );
+    type Filters = Or<(With<BackgroundColor>, With<UiImage>)>;
 
     fn name() -> &'static str {
         "background-color"
@@ -474,12 +525,17 @@ impl Property for BackgroundColorProperty {
     }
 
     fn apply<'w>(
-        cache: &Self::Cache,
-        components: QueryItem<Self::Components>,
+        cache: Option<&Self::Cache>,
+        (bg, img): QueryItem<Self::Components>,
         _asset_server: &AssetServer,
-        commands: &mut Commands,
+        _commands: &mut Commands,
     ) {
-        commands.entity(components).insert(BackgroundColor(*cache));
+        if let Some(mut bg) = bg {
+            *bg = cache.copied().map(BackgroundColor).unwrap_or_default();
+        }
+        if let Some(mut img) = img {
+            img.color = cache.copied().unwrap_or_default();
+        }
     }
 }
 
@@ -505,12 +561,14 @@ impl Property for BorderColorProperty {
     }
 
     fn apply<'w>(
-        cache: &Self::Cache,
+        cache: Option<&Self::Cache>,
         components: QueryItem<Self::Components>,
         _asset_server: &AssetServer,
         commands: &mut Commands,
     ) {
-        commands.entity(components).insert(BorderColor(*cache));
+        commands
+            .entity(components)
+            .insert(cache.copied().map(BorderColor).unwrap_or_default());
     }
 }
 
@@ -536,11 +594,14 @@ impl Property for ImageProperty {
     }
 
     fn apply<'w>(
-        cache: &Self::Cache,
+        cache: Option<&Self::Cache>,
         mut components: QueryItem<Self::Components>,
         asset_server: &AssetServer,
         _commands: &mut Commands,
     ) {
-        components.texture = asset_server.load(cache);
+        components.texture = match cache {
+            Some(cache) => asset_server.load(cache),
+            None => bevy::render::texture::TRANSPARENT_IMAGE_HANDLE,
+        };
     }
 }

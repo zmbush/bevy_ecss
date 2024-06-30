@@ -1,7 +1,9 @@
 #ui-root {
-	width: 30%;
+	width: 60%;
 	height: 100%;
 	justfy-content: space-between;
+	margin: 0 40px 0 0;
+	/* margin-left: 40px; */
 }
 
 #list {
@@ -17,7 +19,7 @@
 	row-gap: 5px;
 	column-gap: 10px;
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	grid-template-columns: repeat(15, 1fr);
 	justify-items: center;
 	align-items: center;
 	/* grid-template-columns: 1fr 1fr 1fr; */

@@ -11,7 +11,7 @@ use bevy::{
         GridPlacement, GridTrack, GridTrackRepetition, MaxTrackSizingFunction,
         MinTrackSizingFunction, RepeatedGridTrack, UiRect, Val,
     },
-    utils::HashMap,
+    utils::{HashMap, HashSet},
 };
 
 use cssparser::Token;
@@ -114,6 +114,7 @@ impl PropertyValues {
     pub fn val(&self) -> Option<Val> {
         self.0.iter().find_map(|token| match token {
             PropertyToken::Percentage(val) => Some(Val::Percent(*val)),
+            PropertyToken::Number(val) if *val == 0.0 => Some(Val::Px(0.0)),
             PropertyToken::Dimension(val) => Some(Val::Px(*val)),
             PropertyToken::VMin(val) => Some(Val::VMin(*val)),
             PropertyToken::VMax(val) => Some(Val::VMax(*val)),
@@ -279,35 +280,35 @@ impl PropertyValues {
     ///
     /// Note that it is not possible to create a [`UiRect`] with only `top` value, since it'll be understood to replicated it on all fields.
     pub fn rect(&self) -> Option<UiRect> {
-        if self.0.len() == 1 {
-            self.val().map(UiRect::all)
-        } else {
-            self.0
-                .iter()
-                .fold((None, 0), |(rect, idx), token| {
-                    let val = match token {
-                        PropertyToken::Percentage(val) => Val::Percent(*val),
-                        PropertyToken::Dimension(val) => Val::Px(*val),
-                        PropertyToken::VMin(val) => Val::VMin(*val),
-                        PropertyToken::VMax(val) => Val::VMax(*val),
-                        PropertyToken::Vh(val) => Val::Vh(*val),
-                        PropertyToken::Vw(val) => Val::Vw(*val),
-                        PropertyToken::Identifier(val) if val == "auto" => Val::Auto,
-                        _ => return (rect, idx),
-                    };
-                    let mut rect: UiRect = rect.unwrap_or_default();
+        self.0
+            .iter()
+            .fold((None, 0), |(rect, idx), token| {
+                let val = match token {
+                    PropertyToken::Percentage(val) => Val::Percent(*val),
+                    PropertyToken::Dimension(val) => Val::Px(*val),
+                    PropertyToken::Number(num) if *num == 0.0 => Val::Px(0.0),
+                    PropertyToken::VMin(val) => Val::VMin(*val),
+                    PropertyToken::VMax(val) => Val::VMax(*val),
+                    PropertyToken::Vh(val) => Val::Vh(*val),
+                    PropertyToken::Vw(val) => Val::Vw(*val),
+                    PropertyToken::Identifier(val) if val == "auto" => Val::Auto,
+                    _ => return (rect, idx),
+                };
+                let mut rect: UiRect = rect.unwrap_or_default();
 
-                    match idx {
-                        0 => rect.top = val,
-                        1 => rect.right = val,
-                        2 => rect.bottom = val,
-                        3 => rect.left = val,
-                        _ => (),
+                match idx {
+                    0 => rect = UiRect::all(val),
+                    1 => {
+                        rect.left = val;
+                        rect.right = val;
                     }
-                    (Some(rect), idx + 1)
-                })
-                .0
-        }
+                    2 => rect.bottom = val,
+                    3 => rect.left = val,
+                    _ => (),
+                }
+                (Some(rect), idx + 1)
+            })
+            .0
     }
 }
 
@@ -543,7 +544,7 @@ pub trait Property: Default + Sized + Send + Sync + 'static {
     ///
     /// If mutability is desired while applying the changes, declare [`Components`](Property::Components) as mutable.
     fn apply(
-        cache: &Self::Cache,
+        cache: Option<&Self::Cache>,
         components: QueryItem<Self::Components>,
         asset_server: &AssetServer,
         commands: &mut Commands,
@@ -561,18 +562,26 @@ pub trait Property: Default + Sized + Send + Sync + 'static {
         asset_server: Res<AssetServer>,
         mut commands: Commands,
     ) {
+        let mut entities_set = HashSet::new();
         for (asset_id, _, selected) in apply_sheets.iter() {
             if let Some(rules) = assets.get(*asset_id) {
                 for (selector, entities) in selected.iter() {
-                    if let CacheState::Ok(cached) = local.get_or_parse(rules, selector) {
-                        trace!(
-                            r#"Applying property "{}" from sheet "{}" ({})"#,
-                            Self::name(),
-                            rules.path(),
-                            selector
-                        );
-                        for entity in entities {
-                            if let Ok(components) = q_nodes.get_mut(*entity) {
+                    let cached = match local.get_or_parse(rules, selector) {
+                        CacheState::Ok(cached) => Some(cached),
+                        _ => None,
+                    };
+                    for entity in entities {
+                        if let Ok(components) = q_nodes.get_mut(*entity) {
+                            if cached.is_some() || !entities_set.contains(entity) {
+                                entities_set.insert(entity);
+                                if cached.is_some() {
+                                    trace!(
+                                        r#"Applying property "{}" from sheet "{}" ({})"#,
+                                        Self::name(),
+                                        rules.path(),
+                                        selector
+                                    );
+                                }
                                 Self::apply(cached, components, &asset_server, &mut commands);
                             }
                         }
