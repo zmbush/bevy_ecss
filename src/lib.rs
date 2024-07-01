@@ -172,22 +172,22 @@ fn register_properties(app: &mut bevy::prelude::App) {
     app.register_property::<GridTemplateRows>();
 
     app.register_property::<MarginProperty>();
-    app.register_property::<MarginTopProperty>();
-    app.register_property::<MarginBottomProperty>();
-    app.register_property::<MarginLeftProperty>();
-    app.register_property::<MarginRightProperty>();
+    app.register_property_after::<MarginTopProperty, MarginProperty>();
+    app.register_property_after::<MarginBottomProperty, MarginProperty>();
+    app.register_property_after::<MarginLeftProperty, MarginProperty>();
+    app.register_property_after::<MarginRightProperty, MarginProperty>();
 
     app.register_property::<PaddingProperty>();
-    app.register_property::<PaddingTopProperty>();
-    app.register_property::<PaddingBottomProperty>();
-    app.register_property::<PaddingLeftProperty>();
-    app.register_property::<PaddingRightProperty>();
+    app.register_property_after::<PaddingTopProperty, PaddingProperty>();
+    app.register_property_after::<PaddingBottomProperty, PaddingProperty>();
+    app.register_property_after::<PaddingLeftProperty, PaddingProperty>();
+    app.register_property_after::<PaddingRightProperty, PaddingProperty>();
 
     app.register_property::<BorderProperty>();
-    app.register_property::<BorderTopProperty>();
-    app.register_property::<BorderBottomProperty>();
-    app.register_property::<BorderLeftProperty>();
-    app.register_property::<BorderRightProperty>();
+    app.register_property_after::<BorderTopProperty, BorderProperty>();
+    app.register_property_after::<BorderBottomProperty, BorderProperty>();
+    app.register_property_after::<BorderLeftProperty, BorderProperty>();
+    app.register_property_after::<BorderRightProperty, BorderProperty>();
 
     app.register_property::<FontColorProperty>();
     app.register_property::<FontProperty>();
