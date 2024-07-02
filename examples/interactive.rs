@@ -28,7 +28,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(Name::new("ui-root"))
-        .insert(StyleSheet::new(asset_server.load("sheets/interactive.css")))
+        .insert(StyleSheet::new(
+            asset_server.load("sheets/interactive.scss"),
+        ))
         .with_children(|parent| {
             parent
                 .spawn(NodeBundle {

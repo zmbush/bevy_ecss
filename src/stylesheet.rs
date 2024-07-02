@@ -1,11 +1,16 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    ffi::OsStr,
+    hash::{Hash, Hasher},
+};
 
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt},
+    log::warn,
     prelude::Asset,
     reflect::TypePath,
     utils::{AHasher, HashMap},
 };
+use grass::InputSyntax;
 use smallvec::SmallVec;
 use thiserror::Error;
 
@@ -86,6 +91,9 @@ pub enum StyleSheetLoaderError {
     Io(#[from] std::io::Error),
     #[error("Invalid file format: {0}")]
     UTF8(#[from] std::str::Utf8Error),
+    #[cfg(feature = "sass")]
+    #[error("Could not compile sass: {0}")]
+    SASSError(#[from] Box<grass::Error>),
 }
 
 impl AssetLoader for StyleSheetLoader {
@@ -109,5 +117,50 @@ impl AssetLoader for StyleSheetLoader {
 
     fn extensions(&self) -> &[&str] {
         &["css"]
+    }
+}
+
+#[derive(Default)]
+#[cfg(feature = "sass")]
+pub(crate) struct SCSSLoader;
+
+#[cfg(feature = "sass")]
+impl AssetLoader for SCSSLoader {
+    type Asset = StyleSheetAsset;
+    type Settings = ();
+    type Error = StyleSheetLoaderError;
+
+    async fn load<'a>(
+        &'a self,
+        reader: &'a mut Reader<'_>,
+        _settings: &'a Self::Settings,
+        load_context: &'a mut bevy::asset::LoadContext<'_>,
+    ) -> Result<StyleSheetAsset, StyleSheetLoaderError> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let content = std::str::from_utf8(&bytes)?;
+        let input_syntax = match load_context.path().extension().and_then(OsStr::to_str) {
+            Some("scss") => InputSyntax::Scss,
+            Some("sass") => InputSyntax::Sass,
+            Some("css") => InputSyntax::Css,
+            _ => {
+                warn!(
+                    "Could not determine sass type for {}",
+                    load_context.path().display()
+                );
+                InputSyntax::Scss
+            }
+        };
+        let css = grass::from_string(
+            content,
+            &grass::Options::default().input_syntax(input_syntax),
+        )?;
+        let stylesheet =
+            StyleSheetAsset::parse(load_context.path().to_str().unwrap_or_default(), &css);
+        Ok(stylesheet)
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["scss", "sass"]
     }
 }

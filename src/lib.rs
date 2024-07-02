@@ -22,7 +22,7 @@ use bevy::{
 };
 
 use property::StyleSheetState;
-use stylesheet::StyleSheetLoader;
+use stylesheet::{SCSSLoader, StyleSheetLoader};
 
 use system::{ComponentFilterRegistry, PrepareParams};
 
@@ -113,6 +113,9 @@ impl Plugin for EcssPlugin {
                 system::watch_tracked_entities.in_set(EcssSet::ChangeDetection),
             )
             .add_systems(PostUpdate, system::clear_state.in_set(EcssSet::Cleanup));
+
+        #[cfg(feature = "sass")]
+        app.init_asset_loader::<SCSSLoader>();
 
         let prepared_state = PrepareParams::new(app.world_mut());
         app.insert_resource(prepared_state);
