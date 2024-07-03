@@ -605,3 +605,34 @@ impl Property for ImageProperty {
         };
     }
 }
+
+/// Applies the `border-radius` property on [`bevy::prelude::BorderRadius`] components.
+#[derive(Default)]
+pub struct BorderRadiusProperty;
+
+impl Property for BorderRadiusProperty {
+    type Cache = BorderRadius;
+    type Components = &'static mut BorderRadius;
+    type Filters = With<Node>;
+
+    fn name() -> &'static str {
+        "border-radius"
+    }
+
+    fn parse<'a>(values: &PropertyValues) -> Result<Self::Cache, EcssError> {
+        if let Some(border_radius) = values.border_radius() {
+            Ok(border_radius)
+        } else {
+            Err(EcssError::InvalidPropertyValue(Self::name().to_string()))
+        }
+    }
+
+    fn apply<'w>(
+        cache: Option<&Self::Cache>,
+        mut components: QueryItem<Self::Components>,
+        _asset_server: &AssetServer,
+        _commands: &mut Commands,
+    ) {
+        *components = cache.copied().unwrap_or_default();
+    }
+}

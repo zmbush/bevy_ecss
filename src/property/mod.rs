@@ -8,7 +8,7 @@ use bevy::{
         Resource,
     },
     ui::{
-        GridPlacement, GridTrack, GridTrackRepetition, MaxTrackSizingFunction,
+        BorderRadius, GridPlacement, GridTrack, GridTrackRepetition, MaxTrackSizingFunction,
         MinTrackSizingFunction, RepeatedGridTrack, UiRect, Val,
     },
     utils::{HashMap, HashSet},
@@ -307,6 +307,39 @@ impl PropertyValues {
                     _ => (),
                 }
                 (Some(rect), idx + 1)
+            })
+            .0
+    }
+
+    /// Tries to parses the current values as a single [`Option<BorderRadius>`].
+    pub fn border_radius(&self) -> Option<BorderRadius> {
+        self.0
+            .iter()
+            .fold((None, 0), |(rect, idx), token| {
+                let val = match token {
+                    PropertyToken::Percentage(val) => Val::Percent(*val),
+                    PropertyToken::Dimension(val) => Val::Px(*val),
+                    PropertyToken::Number(num) if *num == 0.0 => Val::Px(0.0),
+                    PropertyToken::VMin(val) => Val::VMin(*val),
+                    PropertyToken::VMax(val) => Val::VMax(*val),
+                    PropertyToken::Vh(val) => Val::Vh(*val),
+                    PropertyToken::Vw(val) => Val::Vw(*val),
+                    PropertyToken::Identifier(val) if val == "auto" => Val::Auto,
+                    _ => return (rect, idx),
+                };
+                let mut border_radius: BorderRadius = rect.unwrap_or_default();
+
+                match idx {
+                    0 => border_radius = BorderRadius::all(val),
+                    1 => {
+                        border_radius.top_right = val;
+                        border_radius.bottom_left = val;
+                    }
+                    2 => border_radius.bottom_right = val,
+                    3 => border_radius.bottom_left = val,
+                    _ => (),
+                }
+                (Some(border_radius), idx + 1)
             })
             .0
     }

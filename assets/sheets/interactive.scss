@@ -7,7 +7,6 @@
 }
 
 #list {
-  background-color: #af2d2d;
   width: 100%;
   height: 100%;
   /* flex-direction: column-reverse; */
@@ -23,6 +22,10 @@
   justify-items: center;
   align-items: center;
   /* grid-template-columns: 1fr 1fr 1fr; */
+
+  background-color: #af2d2d;
+  padding: 10px;
+  border-radius: 50px;
 }
 
 text {

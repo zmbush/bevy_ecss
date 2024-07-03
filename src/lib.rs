@@ -186,6 +186,7 @@ fn register_properties(app: &mut bevy::prelude::App) {
     app.register_property_after::<PaddingLeftProperty, PaddingProperty>();
     app.register_property_after::<PaddingRightProperty, PaddingProperty>();
 
+    app.register_property::<BorderRadiusProperty>();
     app.register_property::<BorderProperty>();
     app.register_property_after::<BorderTopProperty, BorderProperty>();
     app.register_property_after::<BorderBottomProperty, BorderProperty>();
