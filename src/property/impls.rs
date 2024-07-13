@@ -636,3 +636,34 @@ impl Property for BorderRadiusProperty {
         *components = cache.copied().unwrap_or_default();
     }
 }
+
+/// Applies the `z-index` property on [`bevy::prelude::ZIndex`] components.
+#[derive(Default)]
+pub struct ZIndexProperty;
+
+impl Property for ZIndexProperty {
+    type Cache = ZIndex;
+    type Components = &'static mut ZIndex;
+    type Filters = With<Node>;
+
+    fn name() -> &'static str {
+        "z-index"
+    }
+
+    fn parse<'a>(values: &PropertyValues) -> Result<Self::Cache, EcssError> {
+        if let Some(z_index) = values.i32() {
+            Ok(ZIndex::Global(z_index))
+        } else {
+            Err(EcssError::InvalidPropertyValue(Self::name().to_string()))
+        }
+    }
+
+    fn apply<'w>(
+        cache: Option<&Self::Cache>,
+        mut components: QueryItem<Self::Components>,
+        _asset_server: &AssetServer,
+        _commands: &mut Commands,
+    ) {
+        *components = cache.copied().unwrap_or_default();
+    }
+}

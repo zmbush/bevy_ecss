@@ -273,6 +273,41 @@ impl PropertyValues {
         })
     }
 
+    /// Tries to parses the current values as a single [`i32`].
+    ///
+    /// Only [`Percentage`](PropertyToken::Percentage), [`Dimension`](PropertyToken::Dimension`) and [`Number`](PropertyToken::Number`)
+    /// are considered valid values.
+    pub fn i32(&self) -> Option<i32> {
+        let float = self.f32()?;
+        if float.fract() == 0.0 && float >= i32::MIN as f32 && float <= i32::MAX as f32 {
+            return Some(float.trunc() as i32);
+        }
+        None
+    }
+
+    /// Tries to parses the current values as a single [`Option<i32>`].
+    ///
+    /// This function is useful for properties where either a numeric value or a `none` value is expected.
+    ///
+    /// If a [`Option::None`] is returned, it means some invalid value was found.
+    ///
+    /// If there is a [`Percentage`](PropertyToken::Percentage), [`Dimension`](PropertyToken::Dimension`) or [`Number`](PropertyToken::Number`) token,
+    /// a [`Option::Some`] with parsed [`Option<i32>`] is returned.
+    /// If there is a identifier with a `none` value, then [`Option::Some`] with [`None`] is returned.
+    pub fn option_i32(&self) -> Option<Option<i32>> {
+        let float_or = self.option_f32()?;
+        Some(match float_or {
+            Some(float) => {
+                if float.fract() == 0.0 && float >= i32::MIN as f32 && float <= i32::MAX as f32 {
+                    Some(float.trunc() as i32)
+                } else {
+                    return None;
+                }
+            }
+            None => None,
+        })
+    }
+
     /// Tries to parses the current values as a single [`Option<UiRect<Val>>`].
     ///
     /// Optional values are handled by this function, so if only one value is present it is used as `top`, `right`, `bottom` and `left`,
