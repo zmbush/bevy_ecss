@@ -10,9 +10,9 @@ mod system;
 use std::{error::Error, fmt::Display};
 
 use bevy::{
-    app::First,
+    app::{First, MainScheduleOrder, Update},
     asset::AssetEvents,
-    ecs::system::SystemState,
+    ecs::{schedule::ScheduleLabel, system::SystemState},
     prelude::{
         AssetApp, Button, Component, Entity, IntoSystemConfigs, IntoSystemSetConfigs, Plugin,
         PostUpdate, PreUpdate, Query, SystemSet, With,
@@ -94,25 +94,41 @@ pub enum EcssSet {
 #[derive(Default)]
 pub struct EcssPlugin;
 
+#[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct DoEcss;
+
 impl Plugin for EcssPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
+        app.init_schedule(DoEcss);
+        app.world_mut()
+            .resource_mut::<MainScheduleOrder>()
+            .insert_after(Update, DoEcss);
         app.register_type::<Class>()
             .register_type::<StyleSheet>()
             .init_asset::<StyleSheetAsset>()
+            // .configure_sets(
+            //     PreUpdate,
+            //     (EcssSet::Prepare, EcssSet::ChangeDetection).chain(),
+            // )
             .configure_sets(
-                PreUpdate,
-                (EcssSet::Prepare, EcssSet::ChangeDetection).chain(),
+                DoEcss,
+                (
+                    EcssSet::Prepare,
+                    EcssSet::ChangeDetection,
+                    EcssSet::Apply,
+                    EcssSet::Cleanup,
+                )
+                    .chain(),
             )
-            .configure_sets(PostUpdate, (EcssSet::Apply, EcssSet::Cleanup).chain())
             .init_resource::<StyleSheetState>()
             .init_resource::<ComponentFilterRegistry>()
             .init_asset_loader::<StyleSheetLoader>()
-            .add_systems(PreUpdate, system::prepare.in_set(EcssSet::Prepare))
+            .add_systems(DoEcss, system::prepare.in_set(EcssSet::Prepare))
             .add_systems(
-                PreUpdate,
+                DoEcss,
                 system::watch_tracked_entities.in_set(EcssSet::ChangeDetection),
             )
-            .add_systems(PostUpdate, system::clear_state.in_set(EcssSet::Cleanup));
+            .add_systems(DoEcss, system::clear_state.in_set(EcssSet::Cleanup));
 
         #[cfg(feature = "sass")]
         app.init_asset_loader::<SCSSLoader>();
@@ -273,7 +289,7 @@ impl RegisterProperty for bevy::prelude::App {
     where
         T: Property + 'static,
     {
-        self.add_systems(PostUpdate, T::apply_system.in_set(EcssSet::Apply));
+        self.add_systems(DoEcss, T::apply_system.in_set(EcssSet::Apply));
 
         self
     }
@@ -284,7 +300,7 @@ impl RegisterProperty for bevy::prelude::App {
         After: Property + 'static,
     {
         self.add_systems(
-            PostUpdate,
+            DoEcss,
             T::apply_system
                 .after(After::apply_system)
                 .in_set(EcssSet::Apply),
