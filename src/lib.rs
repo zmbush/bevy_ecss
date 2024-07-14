@@ -101,9 +101,9 @@ impl Plugin for EcssPlugin {
             .init_asset::<StyleSheetAsset>()
             .configure_sets(
                 PreUpdate,
-                (EcssSet::Prepare, EcssSet::ChangeDetection, EcssSet::Apply).chain(),
+                (EcssSet::Prepare, EcssSet::ChangeDetection).chain(),
             )
-            .configure_sets(PostUpdate, EcssSet::Cleanup)
+            .configure_sets(PostUpdate, (EcssSet::Apply, EcssSet::Cleanup).chain())
             .init_resource::<StyleSheetState>()
             .init_resource::<ComponentFilterRegistry>()
             .init_asset_loader::<StyleSheetLoader>()
@@ -273,7 +273,7 @@ impl RegisterProperty for bevy::prelude::App {
     where
         T: Property + 'static,
     {
-        self.add_systems(PreUpdate, T::apply_system.in_set(EcssSet::Apply));
+        self.add_systems(PostUpdate, T::apply_system.in_set(EcssSet::Apply));
 
         self
     }
@@ -284,7 +284,7 @@ impl RegisterProperty for bevy::prelude::App {
         After: Property + 'static,
     {
         self.add_systems(
-            PreUpdate,
+            PostUpdate,
             T::apply_system
                 .after(After::apply_system)
                 .in_set(EcssSet::Apply),
